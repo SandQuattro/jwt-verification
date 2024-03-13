@@ -1,4 +1,4 @@
-package jwt_verification
+package jwtverification
 
 import (
 	"crypto"
