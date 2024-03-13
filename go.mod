@@ -4,7 +4,7 @@ go 1.20
 
 require (
 	github.com/golang-jwt/jwt v3.2.2+incompatible
-	github.com/gurkankaymak/hocon v1.2.19
+	github.com/gurkankaymak/hocon v1.2.15
 	github.com/labstack/echo-contrib v0.15.0
 	github.com/labstack/echo/v4 v4.11.4
 	github.com/sirupsen/logrus v1.9.3
