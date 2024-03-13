@@ -1,4 +1,4 @@
-module github.com/SandQuattro/jwtverification
+module github.com/SandQuattro/jwt-verification
 
 go 1.20
 
