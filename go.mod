@@ -1,4 +1,4 @@
-module jwt-verification
+module jwtverification
 
 go 1.22.0
 
