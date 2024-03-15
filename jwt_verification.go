@@ -179,6 +179,26 @@ func (s *JwtService) readPrivatePEMKey(path string) (crypto.PrivateKey, error) {
 	return privateKey, nil
 }
 
+func (s *JwtService) readPrivatePEMKeyFromBytes(keyBytes []byte) (crypto.PrivateKey, error) {
+	block, _ := pem.Decode(keyBytes)
+	if block == nil {
+		return nil, errors.New("failed to parse PEM block containing the key")
+	}
+
+	var privateKey crypto.PrivateKey
+	privateKey, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+	if err != nil {
+		s.logger.Warn("Ошибка парсинга приватного ключа, ", err)
+		privateKey, err = x509.ParsePKCS1PrivateKey(block.Bytes)
+		if err != nil {
+			s.logger.Error("Ошибка парсинга приватного ключа, ", err)
+			return nil, err
+		}
+		return privateKey, err
+	}
+	return privateKey, nil
+}
+
 func (s *JwtService) readPublicPEMKey(path string) (crypto.PublicKey, error) {
 	// Читаем открытый ключ
 	keyBytes, err := os.ReadFile(path)
@@ -190,6 +210,22 @@ func (s *JwtService) readPublicPEMKey(path string) (crypto.PublicKey, error) {
 	block, _ := pem.Decode(keyBytes)
 	if block == nil {
 		panic(err)
+	}
+
+	publicKey, err := x509.ParsePKIXPublicKey(block.Bytes)
+	if err != nil {
+		s.logger.Error("Ошибка парсинга открытого ключа, ", err)
+		return nil, ErrInvalidKeyType
+	}
+
+	return publicKey, nil
+}
+
+func (s *JwtService) readPublicPEMKeyFromBytes(keyBytes []byte) (crypto.PublicKey, error) {
+
+	block, _ := pem.Decode(keyBytes)
+	if block == nil {
+		return nil, errors.New("failed to parse PEM block containing the key")
 	}
 
 	publicKey, err := x509.ParsePKIXPublicKey(block.Bytes)
@@ -230,6 +266,15 @@ func (s *JwtService) readPublicDERKey(path string) (crypto.PublicKey, error) {
 	return keyData, nil
 }
 
+func (s *JwtService) readPublicDERKeyFromBytes(keyBytes []byte) (crypto.PublicKey, error) {
+	keyData, err := x509.ParsePKIXPublicKey(keyBytes)
+	if err != nil {
+		return nil, err
+	}
+
+	return keyData, nil
+}
+
 func (s *JwtService) readPrivateDERKey(path string) (crypto.PrivateKey, error) {
 	// Читаем приватный ключ
 	keyBytes, err := os.ReadFile(path)
@@ -237,12 +282,19 @@ func (s *JwtService) readPrivateDERKey(path string) (crypto.PrivateKey, error) {
 		s.logger.Error("Ошибка чтения приватного ключа, ", err)
 		return nil, err
 	}
-
 	keyData, err := x509.ParsePKCS8PrivateKey(keyBytes)
 	if err != nil {
 		return nil, err
 	}
 
 	return keyData, nil
+}
 
+func (s *JwtService) readPrivateDERKeyFromBytes(keyBytes []byte) (crypto.PrivateKey, error) {
+	keyData, err := x509.ParsePKCS8PrivateKey(keyBytes)
+	if err != nil {
+		return nil, err
+	}
+
+	return keyData, nil
 }
