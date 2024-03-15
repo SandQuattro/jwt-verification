@@ -1,6 +1,7 @@
 package jwtverification
 
 import (
+	"context"
 	"crypto"
 	"crypto/ed25519"
 	"crypto/rsa"
@@ -12,6 +13,7 @@ import (
 	"github.com/gurkankaymak/hocon"
 	"github.com/labstack/echo-contrib/jaegertracing"
 	"github.com/labstack/echo/v4"
+	"github.com/redis/go-redis/v9"
 	"github.com/sirupsen/logrus"
 	"os"
 	"strings"
@@ -38,12 +40,12 @@ func New(config *hocon.Config, logger *logrus.Logger, keys Keys) *JwtService {
 	return &JwtService{config: config, logger: logger, keys: keys}
 }
 
-func (s *JwtService) RefreshJwtToken(ctx echo.Context, tokenStr string) (string, error) {
+func (s *JwtService) RefreshJwtToken(ctx echo.Context, tokenStr string, path string, redis *redis.Client) (string, error) {
 	span := jaegertracing.CreateChildSpan(ctx, "refresh jwt token")
 	defer span.Finish()
 
 	// проверка токена
-	claims, isValid, err := s.ValidateToken(tokenStr)
+	claims, isValid, err := s.ValidateToken(tokenStr, path, redis)
 	if err != nil {
 		return "", err
 	}
@@ -61,8 +63,8 @@ func (s *JwtService) RefreshJwtToken(ctx echo.Context, tokenStr string) (string,
 	return token, nil
 }
 
-func (s *JwtService) JwtClaims(tokenStr string) (jwt.MapClaims, error) {
-	claims, isValid, err := s.ValidateToken(tokenStr)
+func (s *JwtService) JwtClaims(tokenStr string, path string, redis *redis.Client) (jwt.MapClaims, error) {
+	claims, isValid, err := s.ValidateToken(tokenStr, path, redis)
 	if !isValid {
 		s.logger.Error("JwtClaims getting failed")
 		return nil, err
@@ -70,14 +72,45 @@ func (s *JwtService) JwtClaims(tokenStr string) (jwt.MapClaims, error) {
 	return claims, nil
 }
 
-func (s *JwtService) ValidateToken(tokenStr string) (jwt.MapClaims, bool, error) {
+func (s *JwtService) ValidateToken(tokenStr string, path string, redis *redis.Client) (jwt.MapClaims, bool, error) {
 	var err error
 	var publicKey crypto.PublicKey
 
 	if s.keys == PEM {
-		publicKey, err = s.readPublicPEMKey(s.config.GetString("jwt.pem.public"))
+		if redis != nil {
+			keyBytes, err := redis.Get(context.Background(), "key:pem").Bytes()
+			if err != nil {
+				return nil, false, err
+			}
+			publicKey, err = s.readPublicPEMKeyFromBytes(keyBytes)
+			if err != nil {
+				return nil, false, err
+			}
+		} else {
+			publicKey, err = s.readPublicPEMKey(path)
+			if err != nil {
+				return nil, false, err
+			}
+		}
+	} else if s.keys == DER {
+		if redis != nil {
+			keyBytes, err := redis.Get(context.Background(), "key:der").Bytes()
+			if err != nil {
+				return nil, false, err
+			}
+			publicKey, err = s.readPublicDERKeyFromBytes(keyBytes)
+			if err != nil {
+				return nil, false, err
+			}
+		} else {
+			publicKey, err = s.readPublicDERKey(path)
+			if err != nil {
+				return nil, false, err
+			}
+		}
 	} else {
-		publicKey, err = s.readPublicDERKey(s.config.GetString("jwt.der.public"))
+		s.logger.Error("Неизвестный тип ключа")
+		return nil, false, ErrInvalidKeyType
 	}
 
 	// проверка токена
