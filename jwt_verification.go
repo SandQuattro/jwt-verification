@@ -78,7 +78,7 @@ func (s *JwtService) ValidateToken(tokenStr string, path string, redis *redis.Cl
 
 	if s.keys == PEM {
 		if redis != nil {
-			keyBytes, err := redis.Get(context.Background(), "key:pem").Bytes()
+			keyBytes, err := redis.LIndex(context.Background(), "key:pem", 0).Bytes()
 			if err != nil {
 				return nil, false, err
 			}
