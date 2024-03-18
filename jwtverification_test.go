@@ -9,6 +9,12 @@ import (
 	"testing"
 )
 
+var CONFIG, _ = hocon.ParseString(`
+jwt {
+    issuer = "smart-analytics-sso"
+  audience = "smart-analytics"
+}`)
+
 func TestCreateBase64FromKey(t *testing.T) {
 	token := `-----BEGIN PUBLIC KEY-----
 MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA6UcbybuH2YlNw6PEtOUg
@@ -29,8 +35,8 @@ func TestValidateInvalidTokenUsingPEM(t *testing.T) {
 	r := redis.NewClient(&redis.Options{
 		Addr: "localhost:6379", // Адрес сервера Redis.
 	})
-	service := New(&hocon.Config{}, logrus.New(), PEM)
-	claims, _, err := service.ValidateToken(token, "", r)
+	service := New(CONFIG, logrus.New(), PEM)
+	claims, _, err := service.ValidateToken(token, "public.pem", r)
 	if err != nil {
 		t.Error(err)
 		t.Fail()
@@ -44,8 +50,8 @@ func TestValidateExternalSystemValidTokenUsingPEM(t *testing.T) {
 	r := redis.NewClient(&redis.Options{
 		Addr: "localhost:6379", // Адрес сервера Redis.
 	})
-	service := New(&hocon.Config{}, logrus.New(), PEM)
-	claims, _, err := service.ValidateToken(token, "", r)
+	service := New(CONFIG, logrus.New(), PEM)
+	claims, _, err := service.ValidateToken(token, "public.pem", r)
 	if err != nil {
 		t.Error(err)
 		t.Fail()
@@ -55,8 +61,8 @@ func TestValidateExternalSystemValidTokenUsingPEM(t *testing.T) {
 }
 
 func TestValidateOurValidTokenUsingPEMWithoutRedis(t *testing.T) {
-	token := "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJhZHIiOiJzYW5kQHRlc3QucnUiLCJhdWQiOiJzbWFydC1hbmFseXRpY3MiLCJleHAiOjE3MTAzNDQwMTQsImZpbyI6Iklnb3IgUy4iLCJpYXQiOjE3MTAzNDM5NTQsImlkIjo1LCJpc3MiOiJzbWFydC1hbmFseXRpY3Mtc3NvIiwicm9sIjoiYWRtaW4iLCJzdWIiOiIiLCJzeXMiOiJkaXJlY3QifQ.Fk-DfT6Kwr1sfjomtt8pfTA8JVla9xwUYN7UW-6sOlIlkvLmTT3Pdtrkg8TpuqPyxc_3_zgj6Z3MFd2ZXVna0rNt-4vSLq6MWQUDLHWXJoS_zaj68CT-dJI9V41Nb1elWEJ2ocRwXCbd4cjSAhWJY6-383PSg4pZH9NtXXQV3dhFbbRKSq4gYBGhtrt1EwBXJ_VLvdhFe3tAwziwGZyuK06hWYmMjq_msZlS3Gg3MeHdHdQsdgi6nZf_YaCutxXa0vPmJKSQcN9luvB9tOGycEygCOWc0HBQYpmFAbHxh8jkvD0XViGxb8pQP7kubYp_lt8uil9f_W4HPtvaxu4lRA"
-	service := New(&hocon.Config{}, logrus.New(), PEM)
+	token := "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJhZHIiOiJzYW5kQHRlc3QucnUiLCJhdWQiOiJzbWFydC1hbmFseXRpY3MiLCJleHAiOjE3MTA3NzY3ODQsImZpbyI6Iklnb3IgUy4iLCJpYXQiOjE3MTA3NzYxODQsImlkIjo1LCJpc3MiOiJzbWFydC1hbmFseXRpY3Mtc3NvIiwicm9sIjoiYWRtaW4iLCJzdWIiOiIiLCJzeXMiOiJkaXJlY3QifQ.flfzdg1TL_RbC6S_IdILi4waXjqJVIy60tfGJGNpLY3oU-dAjmFYsQE-0AiAwAEIEyABUxBOn4UrX2CZ1CacUCDS-2gZwAyEihlf69_E9Yc2slMAmtn6fzl05Q-S16ksry1PIpx7rvwWSop_jYf83XSzYLCkZIGVtnK3k1K33PM1M98BQrb7UhQIQ5GhaXGYcn5XmrPKNqpy9Qk3y-5SsUuLobdT05g7w6OLV2JW49XFh30xRmJZBNEKfg9i2Ei9FyKNvx9P8l09O4BP52RqxH-Dlg6LjWdS5UtZKOa5o6QdU9N5n28X1vNy2K7Pw6Eg2cSC5sMTgDKq_RjF0Lq4sXxfvOdlGNx97evele2ALwBn97eyPPcTEtvNjGWi7vufPoUWi4QAWOk7dglBbktnjmlwdAWYWnnKrNHqKCyJEoPfYZg9hfx9p5CFK-lTKhvVIBeplN-VAPXliIX2zhbG8jvpBMVNSRnVGkwW86pmZjXYu4bQX46wRA8ycYYHlN0o0wFam4J_qET_OJiMKAPyLxmYhWH9dxsKnj6dfrQK7G31YYTJLljRu5nLRj-Ed40YIpq3-DAWUj6vTY9VONUS49NmI4GqYBE5hMFo8UUWVOXrDHfm-7R56mPuSm5OiWi9R35UDawQNqgsXoCgMSV0ferf-bgwFZ04SYKEOkJvB98"
+	service := New(CONFIG, logrus.New(), PEM)
 	claims, _, err := service.ValidateToken(token, "public.pem", nil)
 	if err != nil {
 		t.Error(err)
@@ -67,11 +73,11 @@ func TestValidateOurValidTokenUsingPEMWithoutRedis(t *testing.T) {
 }
 
 func TestValidateOurValidTokenUsingPEM(t *testing.T) {
-	token := "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJhZHIiOiJzYW5kQHRlc3QucnUiLCJhdWQiOiJzbWFydC1hbmFseXRpY3MiLCJleHAiOjE3MTAzNDQwMTQsImZpbyI6Iklnb3IgUy4iLCJpYXQiOjE3MTAzNDM5NTQsImlkIjo1LCJpc3MiOiJzbWFydC1hbmFseXRpY3Mtc3NvIiwicm9sIjoiYWRtaW4iLCJzdWIiOiIiLCJzeXMiOiJkaXJlY3QifQ.Fk-DfT6Kwr1sfjomtt8pfTA8JVla9xwUYN7UW-6sOlIlkvLmTT3Pdtrkg8TpuqPyxc_3_zgj6Z3MFd2ZXVna0rNt-4vSLq6MWQUDLHWXJoS_zaj68CT-dJI9V41Nb1elWEJ2ocRwXCbd4cjSAhWJY6-383PSg4pZH9NtXXQV3dhFbbRKSq4gYBGhtrt1EwBXJ_VLvdhFe3tAwziwGZyuK06hWYmMjq_msZlS3Gg3MeHdHdQsdgi6nZf_YaCutxXa0vPmJKSQcN9luvB9tOGycEygCOWc0HBQYpmFAbHxh8jkvD0XViGxb8pQP7kubYp_lt8uil9f_W4HPtvaxu4lRA"
+	token := "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJhZHIiOiJzYW5kQHRlc3QucnUiLCJhdWQiOiJzbWFydC1hbmFseXRpY3MiLCJleHAiOjE3MTA3Nzc2MDksImZpbyI6Iklnb3IgUy4iLCJpYXQiOjE3MTA3NzcwMDksImlkIjo1LCJpc3MiOiJzbWFydC1hbmFseXRpY3Mtc3NvIiwicm9sIjoiYWRtaW4iLCJzdWIiOiIiLCJzeXMiOiJkaXJlY3QifQ.nC2rjR4gcW6S_l1yYZK8_Y6byeUoMQEdV9folvMlQyUY6EtodkQ3mHGc1DDmttFdVXxXLLWfutvKQkJ5NnzPp5blr5gn_LggnukEDA9AaLPddUy1-lXTJshxqf0Nd6vmQBREEdJ7k2gVzCROj4yuDRqL6clS-KJi6PQF_EA5qWujex2Hccs3LV2z_kXz34-zb-iLv9HwSMvmlJr3wPXJ_FhbzAdLevKk68fwVKt8AYRgMllJ_uaJg8sSspEYTaeGCb17KUhh0y0PEJ30_jqVGb2yYLRdDaX3rdM8fjMJGhFIP0e8HhGCNEL7-KoOCZutT7B2sFLIcjh5GLQVExDqIpEQQ2vj5ZOi4szrQSF1ykNtHBOO9RjGmL7MAB6LXzsCnv1aQRBF3ZIJ6Wgee1_Jp95hsIzJ4BcNTg_N7yCEkvkpWhNhVO2d0gKrOcy6fHq0hTunXYFrG5RYAA3eg2rsU0mwwsG5MCUsYm5bOiGw-I5LZlHSjOe9KEjgdHe6NWgHK8hGq53riesDwGKgrnu7gGUyEcH0q5MHF0IFTGUlcYGuBWozLm1mSqpU6QS7DuUS-K6QhtUgf8d7iTrVdgW-pyL_FheWxI-MAcGNvLD1ylXYAko557_jcV3U1DAyi9Yq32MzGLCmYfrPHj0wumj19gfWh89csDW2gURicO6ejAI"
 	r := redis.NewClient(&redis.Options{
 		Addr: "localhost:6379", // Адрес сервера Redis.
 	})
-	service := New(&hocon.Config{}, logrus.New(), PEM)
+	service := New(CONFIG, logrus.New(), PEM)
 	claims, _, err := service.ValidateToken(token, "public.pem", r)
 	if err != nil {
 		t.Error(err)

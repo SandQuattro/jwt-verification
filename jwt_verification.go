@@ -10,7 +10,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
-	"github.com/golang-jwt/jwt"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/gurkankaymak/hocon"
 	"github.com/redis/go-redis/v9"
 	"github.com/sirupsen/logrus"
@@ -113,7 +113,12 @@ func (s *JwtService) ValidateToken(tokenStr string, path string, redis *redis.Cl
 			}
 
 			return publicKey, nil
-		})
+		},
+			jwt.WithExpirationRequired(),
+			jwt.WithIssuedAt(),
+			jwt.WithIssuer(s.config.GetString("jwt.issuer")),
+			jwt.WithAudience(s.config.GetString("jwt.audience")),
+		)
 
 		if err != nil {
 			s.logger.Error("jwt token parsing error, ", err.Error())
@@ -128,14 +133,6 @@ func (s *JwtService) ValidateToken(tokenStr string, path string, redis *redis.Cl
 		claims, ok := tok.Claims.(jwt.MapClaims)
 		if !ok {
 			return nil, false, fmt.Errorf("invalid token, claims parse error: %w", err)
-		}
-
-		if !claims.VerifyIssuer(s.config.GetString("jwt.issuer"), true) {
-			return nil, false, fmt.Errorf("token issuer error")
-		}
-
-		if !claims.VerifyAudience(s.config.GetString("jwt.audience"), true) {
-			return nil, false, fmt.Errorf("token audience error")
 		}
 
 		return claims, true, nil
