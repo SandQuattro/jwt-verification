@@ -6,24 +6,22 @@ import (
 	"crypto/ed25519"
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/pem"
 	"errors"
 	"fmt"
 	"github.com/golang-jwt/jwt"
 	"github.com/gurkankaymak/hocon"
-	"github.com/labstack/echo-contrib/jaegertracing"
-	"github.com/labstack/echo/v4"
 	"github.com/redis/go-redis/v9"
 	"github.com/sirupsen/logrus"
 	"os"
 	"strings"
-	"time"
 )
 
 var ErrInvalidKeyType = errors.New("invalid key type")
 var ErrInvalidToken = errors.New("invalid token")
 
-type Keys int
+type KeyType int
 
 const (
 	PEM = iota
@@ -31,158 +29,127 @@ const (
 )
 
 type JwtService struct {
-	config *hocon.Config
-	logger *logrus.Logger
-	keys   Keys
+	config  *hocon.Config
+	logger  *logrus.Logger
+	keyType KeyType
 }
 
-func New(config *hocon.Config, logger *logrus.Logger, keys Keys) *JwtService {
-	return &JwtService{config: config, logger: logger, keys: keys}
-}
-
-func (s *JwtService) RefreshJwtToken(ctx echo.Context, tokenStr string, path string, redis *redis.Client) (string, error) {
-	span := jaegertracing.CreateChildSpan(ctx, "refresh jwt token")
-	defer span.Finish()
-
-	// проверка токена
-	claims, isValid, err := s.ValidateToken(tokenStr, path, redis)
-	if err != nil {
-		return "", err
-	}
-	if !isValid {
-		return "", ErrInvalidToken
-	}
-
-	span.SetTag("userID", claims["id"].(int))
-
-	token, err := s.recreateJwtTokenWithClaims(claims)
-	if err != nil {
-		return "", err
-	}
-
-	return token, nil
-}
-
-func (s *JwtService) JwtClaims(tokenStr string, path string, redis *redis.Client) (jwt.MapClaims, error) {
-	claims, isValid, err := s.ValidateToken(tokenStr, path, redis)
-	if !isValid {
-		s.logger.Error("JwtClaims getting failed")
-		return nil, err
-	}
-	return claims, nil
+func New(config *hocon.Config, logger *logrus.Logger, keyType KeyType) *JwtService {
+	return &JwtService{config: config, logger: logger, keyType: keyType}
 }
 
 func (s *JwtService) ValidateToken(tokenStr string, path string, redis *redis.Client) (jwt.MapClaims, bool, error) {
-	var err error
-	var publicKey crypto.PublicKey
+	var publicKeys []crypto.PublicKey
 
-	if s.keys == PEM {
-		if redis != nil {
-			keyBytes, err := redis.LIndex(context.Background(), "key:pem", 0).Bytes()
-			if err != nil {
-				return nil, false, err
-			}
-			publicKey, err = s.readPublicPEMKeyFromBytes(keyBytes)
-			if err != nil {
-				return nil, false, err
-			}
-		} else {
-			publicKey, err = s.readPublicPEMKey(path)
-			if err != nil {
-				return nil, false, err
-			}
+	var redisKeys [][]byte
+	if redis != nil {
+		keys, err := GetKeysFromRedis(redis)
+		if err != nil {
+			return nil, false, err
 		}
-	} else if s.keys == DER {
-		if redis != nil {
-			keyBytes, err := redis.Get(context.Background(), "key:der").Bytes()
-			if err != nil {
-				return nil, false, err
-			}
-			publicKey, err = s.readPublicDERKeyFromBytes(keyBytes)
-			if err != nil {
-				return nil, false, err
-			}
-		} else {
-			publicKey, err = s.readPublicDERKey(path)
-			if err != nil {
-				return nil, false, err
-			}
-		}
-	} else {
-		s.logger.Error("Неизвестный тип ключа")
-		return nil, false, ErrInvalidKeyType
+		redisKeys = keys
 	}
 
-	// проверка токена
-	tok, err := jwt.Parse(strings.ReplaceAll(tokenStr, "Bearer ", ""), func(jwtToken *jwt.Token) (interface{}, error) {
-		switch publicKey.(type) {
-		case *rsa.PublicKey:
-			if _, ok := jwtToken.Method.(*jwt.SigningMethodRSA); !ok {
-				return nil, fmt.Errorf("unexpected method: %s", jwtToken.Header["alg"])
+	if redis == nil || len(redisKeys) == 0 {
+		s.logger.Error("no keys in redis")
+		switch s.keyType {
+		case PEM:
+			publicKey, err := s.readPublicPEMKey(path)
+			if err != nil {
+				return nil, false, err
 			}
-		case ed25519.PublicKey:
-			if _, ok := jwtToken.Method.(*jwt.SigningMethodEd25519); !ok {
-				return nil, fmt.Errorf("unexpected method: %s", jwtToken.Header["alg"])
+			publicKeys = append(publicKeys, publicKey)
+		case DER:
+			publicKey, err := s.readPublicDERKey(path)
+			if err != nil {
+				return nil, false, err
 			}
+			publicKeys = append(publicKeys, publicKey)
 		default:
-			s.logger.Error("Неизвестный тип открытого ключа")
-			return "", fmt.Errorf("неизвестный тип открытого ключа")
+			return nil, false, ErrInvalidKeyType
+		}
+	} else {
+		for _, base64Key := range redisKeys {
+			switch s.keyType {
+			case PEM:
+				decodedKey, err := base64.StdEncoding.DecodeString(string(base64Key))
+				if err != nil {
+					return nil, false, err
+				}
+				publicKey, err := s.readPublicPEMKeyFromBytes(decodedKey)
+				if err != nil {
+					return nil, false, err
+				}
+				publicKeys = append(publicKeys, publicKey)
+			case DER:
+				decodedKey, err := base64.StdEncoding.DecodeString(string(base64Key))
+				if err != nil {
+					return nil, false, err
+				}
+				publicKey, err := s.readPublicDERKeyFromBytes(decodedKey)
+				if err != nil {
+					return nil, false, err
+				}
+				publicKeys = append(publicKeys, publicKey)
+			default:
+				s.logger.Error("Неизвестный тип ключа")
+				return nil, false, ErrInvalidKeyType
+			}
+		}
+	}
+
+	for _, publicKey := range publicKeys {
+		// проверка токена
+		tok, err := jwt.Parse(strings.ReplaceAll(tokenStr, "Bearer ", ""), func(jwtToken *jwt.Token) (interface{}, error) {
+			switch publicKey.(type) {
+			case *rsa.PublicKey:
+				switch jwtToken.Method.(type) {
+				case *jwt.SigningMethodRSA:
+					s.logger.Info("SigningMethodRSA")
+				case *jwt.SigningMethodHMAC:
+					s.logger.Info("SigningMethodHMAC")
+				default:
+					return nil, fmt.Errorf("unexpected key type: %s, method:%s", jwtToken.Header["alg"], jwtToken.Method)
+				}
+			case ed25519.PublicKey:
+				if _, ok := jwtToken.Method.(*jwt.SigningMethodEd25519); !ok {
+					return nil, fmt.Errorf("unexpected method: %s", jwtToken.Header["alg"])
+				}
+			default:
+				s.logger.Error("Неизвестный тип открытого ключа")
+				return "", fmt.Errorf("неизвестный тип открытого ключа")
+			}
+
+			return publicKey, nil
+		})
+
+		if err != nil {
+			s.logger.Error("jwt token parsing error, ", err.Error())
+			continue
 		}
 
-		return publicKey, nil
-	})
-	if err != nil {
-		s.logger.Error("Ошибка парсинга jwt токена, ", err)
-		return nil, false, err
+		if tok == nil || tok.Claims == nil {
+			s.logger.Error("jwt token parsing error")
+			return nil, false, errors.New("jwt token parsing error")
+		}
+
+		claims, ok := tok.Claims.(jwt.MapClaims)
+		if !ok {
+			return nil, false, fmt.Errorf("invalid token, claims parse error: %w", err)
+		}
+
+		if !claims.VerifyIssuer(s.config.GetString("jwt.issuer"), true) {
+			return nil, false, fmt.Errorf("token issuer error")
+		}
+
+		if !claims.VerifyAudience(s.config.GetString("jwt.audience"), true) {
+			return nil, false, fmt.Errorf("token audience error")
+		}
+
+		return claims, true, nil
 	}
 
-	if tok == nil || tok.Claims == nil {
-		s.logger.Error("Ошибка парсинга jwt токена")
-		return nil, false, errors.New("ошибка парсинга jwt токена")
-	}
-
-	claims, ok := tok.Claims.(jwt.MapClaims)
-	if !ok {
-		return nil, false, fmt.Errorf("invalid token, claims parse error: %w", err)
-	}
-
-	if !claims.VerifyIssuer(s.config.GetString("jwt.issuer"), true) {
-		return nil, false, fmt.Errorf("token issuer error")
-	}
-
-	if !claims.VerifyAudience(s.config.GetString("jwt.audience"), true) {
-		return nil, false, fmt.Errorf("token audience error")
-	}
-
-	return claims, true, nil
-}
-
-func (s *JwtService) recreateJwtTokenWithClaims(claims jwt.MapClaims) (string, error) {
-	var err error
-	var privateKey crypto.PublicKey
-
-	if s.keys == PEM {
-		privateKey, err = s.readPrivatePEMKey(s.config.GetString("jwt.pem.private"))
-	} else {
-		privateKey, err = s.readPrivateDERKey(s.config.GetString("jwt.der.private"))
-	}
-
-	if err != nil {
-		return "", err
-	}
-
-	// Меняем даты выдачи и expire
-	claims["iat"] = time.Now().Unix()
-	claims["exp"] = time.Now().Add(time.Minute * time.Duration(s.config.GetInt("jwt.expiredAfterMinutes"))).Unix()
-
-	// Генерируем токен
-	token, err := jwt.NewWithClaims(getSigningMethod(privateKey), claims).SignedString(privateKey)
-	if err != nil {
-		s.logger.Error("Ошибка генерации jwt токена, ", err)
-		return "", err
-	}
-
-	return token, nil
+	return nil, false, fmt.Errorf("token verification error")
 }
 
 func (s *JwtService) readPrivatePEMKey(path string) (crypto.PrivateKey, error) {
@@ -270,17 +237,6 @@ func (s *JwtService) readPublicPEMKeyFromBytes(keyBytes []byte) (crypto.PublicKe
 	return publicKey, nil
 }
 
-func getSigningMethod(privateKey any) jwt.SigningMethod {
-	switch privateKey.(type) {
-	case *rsa.PrivateKey:
-		return jwt.SigningMethodRS256
-	case ed25519.PrivateKey:
-		return jwt.SigningMethodEdDSA
-	default:
-		return nil
-	}
-}
-
 // DER keys format
 // https://www.openssl.org/docs/man1.1.1/man1/pkcs8.html
 func (s *JwtService) readPublicDERKey(path string) (crypto.PublicKey, error) {
@@ -330,4 +286,22 @@ func (s *JwtService) readPrivateDERKeyFromBytes(keyBytes []byte) (crypto.Private
 	}
 
 	return keyData, nil
+}
+
+func GetKeysFromRedis(rdb *redis.Client) ([][]byte, error) {
+	res := make([][]byte, 0)
+	keyBytes, err := rdb.LRange(context.Background(), "key:pem", 0, 9).Result()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, str := range keyBytes {
+		decodedString, err := base64.StdEncoding.DecodeString(str)
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, decodedString)
+	}
+
+	return res, nil
 }
