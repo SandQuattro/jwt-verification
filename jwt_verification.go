@@ -43,7 +43,7 @@ func (s *JwtService) ValidateToken(tokenStr string, path string, redis *redis.Cl
 
 	var redisKeys [][]byte
 	if redis != nil {
-		keys, err := GetKeysFromRedis(redis)
+		keys, err := GetBase64DecodedKeysFromRedis(redis)
 		if err != nil {
 			return nil, false, err
 		}
@@ -69,24 +69,16 @@ func (s *JwtService) ValidateToken(tokenStr string, path string, redis *redis.Cl
 			return nil, false, ErrInvalidKeyType
 		}
 	} else {
-		for _, base64Key := range redisKeys {
+		for _, base64DecodedKey := range redisKeys {
 			switch s.keyType {
 			case PEM:
-				decodedKey, err := base64.StdEncoding.DecodeString(string(base64Key))
-				if err != nil {
-					return nil, false, err
-				}
-				publicKey, err := s.readPublicPEMKeyFromBytes(decodedKey)
+				publicKey, err := s.readPublicPEMKeyFromBytes(base64DecodedKey)
 				if err != nil {
 					return nil, false, err
 				}
 				publicKeys = append(publicKeys, publicKey)
 			case DER:
-				decodedKey, err := base64.StdEncoding.DecodeString(string(base64Key))
-				if err != nil {
-					return nil, false, err
-				}
-				publicKey, err := s.readPublicDERKeyFromBytes(decodedKey)
+				publicKey, err := s.readPublicDERKeyFromBytes(base64DecodedKey)
 				if err != nil {
 					return nil, false, err
 				}
@@ -288,7 +280,7 @@ func (s *JwtService) readPrivateDERKeyFromBytes(keyBytes []byte) (crypto.Private
 	return keyData, nil
 }
 
-func GetKeysFromRedis(rdb *redis.Client) ([][]byte, error) {
+func GetBase64DecodedKeysFromRedis(rdb *redis.Client) ([][]byte, error) {
 	res := make([][]byte, 0)
 	keyBytes, err := rdb.LRange(context.Background(), "key:pem", 0, 9).Result()
 	if err != nil {
