@@ -48,10 +48,12 @@ func (s *JwtService) ValidateToken(tokenStr string, path string, redis *redis.Cl
 			return nil, false, err
 		}
 		redisKeys = keys
+	} else {
+		s.logger.Warn("redis disabled or not configured")
 	}
 
 	if redis == nil || len(redisKeys) == 0 {
-		s.logger.Error("no keys in redis")
+		s.logger.Error("redis disabled or no keys in redis")
 		switch s.keyType {
 		case PEM:
 			publicKey, err := s.readPublicPEMKey(path)
