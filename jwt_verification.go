@@ -29,12 +29,12 @@ const (
 )
 
 type JwtService struct {
-	config  *hocon.Config
+	config  func() *hocon.Config
 	logger  *logrus.Logger
 	keyType KeyType
 }
 
-func New(config *hocon.Config, logger *logrus.Logger, keyType KeyType) *JwtService {
+func New(config func() *hocon.Config, logger *logrus.Logger, keyType KeyType) *JwtService {
 	return &JwtService{config: config, logger: logger, keyType: keyType}
 }
 
@@ -118,8 +118,8 @@ func (s *JwtService) ValidateToken(tokenStr string, path string, redis *redis.Cl
 		},
 			jwt.WithExpirationRequired(),
 			jwt.WithIssuedAt(),
-			jwt.WithIssuer(s.config.GetString("jwt.issuer")),
-			jwt.WithAudience(s.config.GetString("jwt.audience")),
+			jwt.WithIssuer(s.config().GetString("jwt.issuer")),
+			jwt.WithAudience(s.config().GetString("jwt.audience")),
 		)
 
 		if err != nil {
