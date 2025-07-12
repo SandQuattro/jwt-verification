@@ -11,7 +11,6 @@ import (
 	"errors"
 	"fmt"
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/gurkankaymak/hocon"
 	"github.com/redis/go-redis/v9"
 	"github.com/sirupsen/logrus"
 	"os"
@@ -29,13 +28,14 @@ const (
 )
 
 type JwtService struct {
-	config  func() *hocon.Config
-	logger  *logrus.Logger
-	keyType KeyType
+	logger      *logrus.Logger
+	keyType     KeyType
+	JwtIssuer   string
+	JwtAudience string
 }
 
-func New(config func() *hocon.Config, logger *logrus.Logger, keyType KeyType) *JwtService {
-	return &JwtService{config: config, logger: logger, keyType: keyType}
+func New(logger *logrus.Logger, keyType KeyType, JwtIssuer, JwtAudience string) *JwtService {
+	return &JwtService{logger: logger, keyType: keyType, JwtIssuer: JwtIssuer, JwtAudience: JwtAudience}
 }
 
 func (s *JwtService) ValidateToken(tokenStr string, path string, redis *redis.Client) (jwt.MapClaims, bool, error) {
@@ -118,8 +118,8 @@ func (s *JwtService) ValidateToken(tokenStr string, path string, redis *redis.Cl
 		},
 			jwt.WithExpirationRequired(),
 			jwt.WithIssuedAt(),
-			jwt.WithIssuer(s.config().GetString("jwt.issuer")),
-			jwt.WithAudience(s.config().GetString("jwt.audience")),
+			jwt.WithIssuer(s.JwtIssuer),
+			jwt.WithAudience(s.JwtAudience),
 		)
 
 		if err != nil {
