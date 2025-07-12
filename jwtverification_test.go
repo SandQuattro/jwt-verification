@@ -3,7 +3,7 @@ package jwtverification
 import (
 	"encoding/base64"
 	"github.com/redis/go-redis/v9"
-	"github.com/sirupsen/logrus"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )
@@ -28,7 +28,7 @@ func TestValidateInvalidTokenUsingPEM(t *testing.T) {
 	r := redis.NewClient(&redis.Options{
 		Addr: "localhost:6379", // Адрес сервера Redis.
 	})
-	service := New(logrus.New(), PEM, "test", "test")
+	service := New(zerolog.DefaultContextLogger, PEM, "test", "test")
 	claims, _, err := service.ValidateToken(token, "public.pem", r)
 	if err != nil {
 		t.Error(err)
@@ -43,7 +43,7 @@ func TestValidateExternalSystemValidTokenUsingPEM(t *testing.T) {
 	r := redis.NewClient(&redis.Options{
 		Addr: "localhost:6379", // Адрес сервера Redis.
 	})
-	service := New(logrus.New(), PEM, "test", "test")
+	service := New(zerolog.DefaultContextLogger, PEM, "test", "test")
 	claims, _, err := service.ValidateToken(token, "public.pem", r)
 	if err != nil {
 		t.Error(err)
@@ -55,7 +55,7 @@ func TestValidateExternalSystemValidTokenUsingPEM(t *testing.T) {
 
 func TestValidateOurValidTokenUsingPEMWithoutRedis(t *testing.T) {
 	token := "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJhZHIiOiJzYW5kQHRlc3QucnUiLCJhdWQiOiJzbWFydC1hbmFseXRpY3MiLCJleHAiOjE3MTA3NzY3ODQsImZpbyI6Iklnb3IgUy4iLCJpYXQiOjE3MTA3NzYxODQsImlkIjo1LCJpc3MiOiJzbWFydC1hbmFseXRpY3Mtc3NvIiwicm9sIjoiYWRtaW4iLCJzdWIiOiIiLCJzeXMiOiJkaXJlY3QifQ.flfzdg1TL_RbC6S_IdILi4waXjqJVIy60tfGJGNpLY3oU-dAjmFYsQE-0AiAwAEIEyABUxBOn4UrX2CZ1CacUCDS-2gZwAyEihlf69_E9Yc2slMAmtn6fzl05Q-S16ksry1PIpx7rvwWSop_jYf83XSzYLCkZIGVtnK3k1K33PM1M98BQrb7UhQIQ5GhaXGYcn5XmrPKNqpy9Qk3y-5SsUuLobdT05g7w6OLV2JW49XFh30xRmJZBNEKfg9i2Ei9FyKNvx9P8l09O4BP52RqxH-Dlg6LjWdS5UtZKOa5o6QdU9N5n28X1vNy2K7Pw6Eg2cSC5sMTgDKq_RjF0Lq4sXxfvOdlGNx97evele2ALwBn97eyPPcTEtvNjGWi7vufPoUWi4QAWOk7dglBbktnjmlwdAWYWnnKrNHqKCyJEoPfYZg9hfx9p5CFK-lTKhvVIBeplN-VAPXliIX2zhbG8jvpBMVNSRnVGkwW86pmZjXYu4bQX46wRA8ycYYHlN0o0wFam4J_qET_OJiMKAPyLxmYhWH9dxsKnj6dfrQK7G31YYTJLljRu5nLRj-Ed40YIpq3-DAWUj6vTY9VONUS49NmI4GqYBE5hMFo8UUWVOXrDHfm-7R56mPuSm5OiWi9R35UDawQNqgsXoCgMSV0ferf-bgwFZ04SYKEOkJvB98"
-	service := New(logrus.New(), PEM, "test", "test")
+	service := New(zerolog.DefaultContextLogger, PEM, "test", "test")
 	claims, _, err := service.ValidateToken(token, "public.pem", nil)
 	if err != nil {
 		t.Error(err)
@@ -70,7 +70,7 @@ func TestValidateOurValidTokenUsingPEM(t *testing.T) {
 	r := redis.NewClient(&redis.Options{
 		Addr: "localhost:6379", // Адрес сервера Redis.
 	})
-	service := New(logrus.New(), PEM, "test", "test")
+	service := New(zerolog.DefaultContextLogger, PEM, "test", "test")
 	claims, _, err := service.ValidateToken(token, "public.pem", r)
 	if err != nil {
 		t.Error(err)

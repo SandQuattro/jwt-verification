@@ -12,7 +12,7 @@ import (
 	"fmt"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/redis/go-redis/v9"
-	"github.com/sirupsen/logrus"
+	"github.com/rs/zerolog"
 	"os"
 	"strings"
 )
@@ -28,13 +28,13 @@ const (
 )
 
 type JwtService struct {
-	logger      *logrus.Logger
+	logger      *zerolog.Logger
 	keyType     KeyType
 	JwtIssuer   string
 	JwtAudience string
 }
 
-func New(logger *logrus.Logger, keyType KeyType, JwtIssuer, JwtAudience string) *JwtService {
+func New(logger *zerolog.Logger, keyType KeyType, JwtIssuer, JwtAudience string) *JwtService {
 	return &JwtService{logger: logger, keyType: keyType, JwtIssuer: JwtIssuer, JwtAudience: JwtAudience}
 }
 
@@ -49,7 +49,7 @@ func (s *JwtService) ValidateToken(tokenStr string, path string, redis *redis.Cl
 		}
 		redisKeys = keys
 	} else {
-		s.logger.Warn("redis disabled or not configured")
+		s.logger.Warn().Msg("redis disabled or not configured")
 	}
 
 	if redis == nil || len(redisKeys) == 0 {
@@ -86,7 +86,7 @@ func (s *JwtService) ValidateToken(tokenStr string, path string, redis *redis.Cl
 				}
 				publicKeys = append(publicKeys, publicKey)
 			default:
-				s.logger.Error("Неизвестный тип ключа")
+				s.logger.Error().Msg("Неизвестный тип ключа")
 				return nil, false, ErrInvalidKeyType
 			}
 		}
@@ -99,9 +99,9 @@ func (s *JwtService) ValidateToken(tokenStr string, path string, redis *redis.Cl
 			case *rsa.PublicKey:
 				switch jwtToken.Method.(type) {
 				case *jwt.SigningMethodRSA:
-					s.logger.Info("SigningMethodRSA")
+					s.logger.Info().Msg("SigningMethodRSA")
 				case *jwt.SigningMethodHMAC:
-					s.logger.Info("SigningMethodHMAC")
+					s.logger.Info().Msg("SigningMethodHMAC")
 				default:
 					return nil, fmt.Errorf("unexpected key type: %s, method:%s", jwtToken.Header["alg"], jwtToken.Method)
 				}
@@ -110,7 +110,7 @@ func (s *JwtService) ValidateToken(tokenStr string, path string, redis *redis.Cl
 					return nil, fmt.Errorf("unexpected method: %s", jwtToken.Header["alg"])
 				}
 			default:
-				s.logger.Error("Неизвестный тип открытого ключа")
+				s.logger.Error().Msg("Неизвестный тип открытого ключа")
 				return "", fmt.Errorf("неизвестный тип открытого ключа")
 			}
 
@@ -123,12 +123,12 @@ func (s *JwtService) ValidateToken(tokenStr string, path string, redis *redis.Cl
 		)
 
 		if err != nil {
-			s.logger.Error("jwt token parsing error, ", err.Error())
+			s.logger.Error().Err(err).Msg("jwt token parsing error")
 			continue
 		}
 
 		if tok == nil || tok.Claims == nil {
-			s.logger.Error("jwt token parsing error")
+			s.logger.Error().Msg("jwt token parsing error")
 			return nil, false, errors.New("jwt token parsing error")
 		}
 
@@ -147,7 +147,7 @@ func (s *JwtService) readPrivatePEMKey(path string) (crypto.PrivateKey, error) {
 	// Читаем приватный ключ
 	keyBytes, err := os.ReadFile(path)
 	if err != nil {
-		s.logger.Error("Ошибка чтения приватного ключа, ", err)
+		s.logger.Error().Err(err).Msg("Ошибка чтения приватного ключа")
 		return nil, err
 	}
 
@@ -159,10 +159,10 @@ func (s *JwtService) readPrivatePEMKey(path string) (crypto.PrivateKey, error) {
 	var privateKey crypto.PrivateKey
 	privateKey, err = x509.ParsePKCS8PrivateKey(block.Bytes)
 	if err != nil {
-		s.logger.Warn("Ошибка парсинга приватного ключа, ", err)
+		s.logger.Warn().Err(err).Msg("Ошибка парсинга приватного ключа")
 		privateKey, err = x509.ParsePKCS1PrivateKey(block.Bytes)
 		if err != nil {
-			s.logger.Error("Ошибка парсинга приватного ключа, ", err)
+			s.logger.Error().Err(err).Msg("Ошибка парсинга приватного ключа")
 			return nil, err
 		}
 		return privateKey, err
@@ -179,10 +179,10 @@ func (s *JwtService) readPrivatePEMKeyFromBytes(keyBytes []byte) (crypto.Private
 	var privateKey crypto.PrivateKey
 	privateKey, err := x509.ParsePKCS8PrivateKey(block.Bytes)
 	if err != nil {
-		s.logger.Warn("Ошибка парсинга приватного ключа, ", err)
+		s.logger.Warn().Err(err).Msg("Ошибка парсинга приватного ключа")
 		privateKey, err = x509.ParsePKCS1PrivateKey(block.Bytes)
 		if err != nil {
-			s.logger.Error("Ошибка парсинга приватного ключа, ", err)
+			s.logger.Error().Err(err).Msg("Ошибка парсинга приватного ключа")
 			return nil, err
 		}
 		return privateKey, err
@@ -194,7 +194,7 @@ func (s *JwtService) readPublicPEMKey(path string) (crypto.PublicKey, error) {
 	// Читаем открытый ключ
 	keyBytes, err := os.ReadFile(path)
 	if err != nil {
-		s.logger.Error("Ошибка чтения открытого ключа, ", err)
+		s.logger.Error().Err(err).Msg("Ошибка чтения открытого ключа")
 		return nil, ErrInvalidKeyType
 	}
 
@@ -205,7 +205,7 @@ func (s *JwtService) readPublicPEMKey(path string) (crypto.PublicKey, error) {
 
 	publicKey, err := x509.ParsePKIXPublicKey(block.Bytes)
 	if err != nil {
-		s.logger.Error("Ошибка парсинга открытого ключа, ", err)
+		s.logger.Error().Err(err).Msg("Ошибка парсинга открытого ключа")
 		return nil, ErrInvalidKeyType
 	}
 
@@ -221,7 +221,7 @@ func (s *JwtService) readPublicPEMKeyFromBytes(keyBytes []byte) (crypto.PublicKe
 
 	publicKey, err := x509.ParsePKIXPublicKey(block.Bytes)
 	if err != nil {
-		s.logger.Error("Ошибка парсинга открытого ключа, ", err)
+		s.logger.Error().Err(err).Msg("Ошибка парсинга открытого ключа")
 		return nil, ErrInvalidKeyType
 	}
 
@@ -234,7 +234,7 @@ func (s *JwtService) readPublicDERKey(path string) (crypto.PublicKey, error) {
 	// Читаем открытый ключ
 	keyBytes, err := os.ReadFile(path)
 	if err != nil {
-		s.logger.Error("Ошибка чтения открытого ключа, ", err)
+		s.logger.Error().Err(err).Msg("Ошибка чтения открытого ключа")
 		return nil, err
 	}
 
@@ -259,7 +259,7 @@ func (s *JwtService) readPrivateDERKey(path string) (crypto.PrivateKey, error) {
 	// Читаем приватный ключ
 	keyBytes, err := os.ReadFile(path)
 	if err != nil {
-		s.logger.Error("Ошибка чтения приватного ключа, ", err)
+		s.logger.Error().Err(err).Msg("Ошибка чтения приватного ключа")
 		return nil, err
 	}
 	keyData, err := x509.ParsePKCS8PrivateKey(keyBytes)
